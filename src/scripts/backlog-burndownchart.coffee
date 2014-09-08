@@ -72,21 +72,32 @@ module.exports = (robot) ->
 
   uploadToSlack = (projectKey, milestoneName, image, channel) ->
     fs = require 'fs'
+    mkdirp = require 'mkdirp'
     request = require 'request'
     {Promise} = require 'q'
     new Promise (resolve, reject) ->
       dir = './hubot-backlog-burndownchart' + '/' + projectKey
       path = dir + '/' + milestoneName + '.png'
-      fs.mkdirSync(dir) unless fs.existsSync(dir)
-      fs.writeFileSync(path, image, { encoding: 'binary' })
-      url = 'https://slack.com/api/files.upload'
-      r = request.post url, (err, httpResponse, body) ->
-        return reject(err) if err?
-        resolve()
-      form = r.form()
-      form.append('file', fs.createReadStream(path))
-      form.append('token', SLACK_TOKEN)
-      form.append('channels', channel)
+      promise = if fs.existsSync(dir)
+        Promise.resolve()
+      else
+        new Promise (resolve, reject) ->
+          mkdirp dir, (err) ->
+            return reject(err) if err?
+            resolve()
+      promise
+        .then ->
+          fs.writeFileSync(path, image, { encoding: 'binary' })
+          url = 'https://slack.com/api/files.upload'
+          r = request.post url, (err, httpResponse, body) ->
+            return reject(err) if err?
+            resolve()
+          form = r.form()
+          form.append('file', fs.createReadStream(path))
+          form.append('token', SLACK_TOKEN)
+          form.append('channels', channel)
+        .then null, (e) ->
+          reject(e)
 
   robot.respond /backlog\s+burn(?:downchart)?\s+(\S+)\s+(\S+)$/i, (res) ->
     projectKey = res.match[1]
